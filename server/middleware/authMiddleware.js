@@ -6,24 +6,36 @@ function authMiddleware(req, res, next) {
   if (!authorization || !authorization.startsWith("Bearer ")) {
     return res.status(401).json({
       success: false,
-      message: "Authentication required.",
+      message: "Authentication required. Please log in.",
     });
   }
 
   if (!process.env.JWT_SECRET) {
     return res.status(500).json({
       success: false,
-      message: "Authentication is not configured.",
+      message: "Authentication is not configured on the server.",
     });
   }
 
-  const token = authorization.slice(7);
+  const token = authorization.slice(7).trim();
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+    // Support the payload field used by your existing authentication.
+    const userId = decoded.userId || decoded.id || decoded._id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid authentication token.",
+      });
+    }
+
     req.user = {
-      id: decoded.userId,
+      id: userId,
+      name: decoded.name || decoded.username || "",
+      email: decoded.email || "",
     };
 
     next();

@@ -4,37 +4,35 @@ const resourceSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, "Resource title is required"],
+      required: true,
       trim: true,
       maxlength: 100,
     },
 
     description: {
       type: String,
-      required: [true, "Resource description is required"],
+      required: true,
       trim: true,
       maxlength: 2000,
     },
 
     category: {
       type: String,
-      required: [true, "Category is required"],
+      required: true,
       enum: [
         "Books",
         "Electronics",
         "Photography",
         "Sports",
         "Gaming",
-        "Lab Equipment",
-        "Stationery",
         "Other",
       ],
     },
 
     pricePerDay: {
       type: Number,
-      required: [true, "Price per day is required"],
-      min: [0, "Price cannot be negative"],
+      required: true,
+      min: 0,
     },
 
     imageUrl: {
@@ -45,22 +43,21 @@ const resourceSchema = new mongoose.Schema(
 
     location: {
       type: String,
-      required: [true, "Location is required"],
+      required: true,
       trim: true,
-      maxlength: 150,
     },
 
     ownerName: {
       type: String,
-      required: [true, "Owner name is required"],
+      required: true,
       trim: true,
-      maxlength: 80,
     },
 
     ownerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      default: null,
+      required: true,
+      index: true,
     },
 
     isAvailable: {
@@ -73,5 +70,4 @@ const resourceSchema = new mongoose.Schema(
   }
 );
 
-// Export Resource model
 module.exports = mongoose.model("Resource", resourceSchema);

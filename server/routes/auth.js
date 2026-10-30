@@ -29,7 +29,7 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    if (password.length < 8) {
+    if (typeof password !== "string" || password.length < 8) {
       return res.status(400).json({
         success: false,
         message: "Password must contain at least 8 characters.",
@@ -37,7 +37,10 @@ router.post("/register", async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const existingUser = await User.findOne({ email: normalizedEmail });
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
 
     if (existingUser) {
       return res.status(409).json({
@@ -46,8 +49,10 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // Do not allow public registration as an administrator.
-    const safeRole = ["student", "faculty"].includes(role) ? role : "student";
+    // Public registration cannot create administrator accounts.
+    const safeRole = ["student", "faculty"].includes(role)
+      ? role
+      : "student";
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
@@ -61,7 +66,7 @@ router.post("/register", async (req, res) => {
 
     const token = createToken(user);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Account created successfully.",
       token,
@@ -74,7 +79,7 @@ router.post("/register", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Registration error:", error.message);
+    console.error("Registration error:", error);
 
     if (error.code === 11000) {
       return res.status(409).json({
@@ -83,9 +88,18 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    res.status(500).json({
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid registration details.",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
       success: false,
       message: "Unable to register.",
+      error: error.message,
     });
   }
 });
@@ -95,7 +109,12 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (
+      typeof email !== "string" ||
+      typeof password !== "string" ||
+      !email.trim() ||
+      !password
+    ) {
       return res.status(400).json({
         success: false,
         message: "Email and password are required.",
@@ -115,7 +134,7 @@ router.post("/login", async (req, res) => {
 
     const token = createToken(user);
 
-    res.json({
+    return res.json({
       success: true,
       message: "Login successful.",
       token,
@@ -128,11 +147,12 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Login error:", error.message);
+    console.error("Login error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Unable to log in.",
+      error: error.message,
     });
   }
 });
