@@ -8,29 +8,21 @@ const authMiddleware = require("../middleware/authMiddleware");
 const router = express.Router();
 
 // GET /api/resources
-// Public: fetch available resources.
+// Public: Explore available resources
 router.get("/", async (req, res) => {
   try {
     const { search, category } = req.query;
-
-    const filter = {
-      isAvailable: true,
-    };
+    const filter = { isAvailable: true };
 
     if (category && category !== "All items") {
       filter.category = category;
     }
 
-    if (search && search.trim()) {
-      const escapedSearch = search.trim().replace(
-        /[.*+?^${}()|[\]\\]/g,
-        "\\$&"
-      );
-
+    if (search) {
       filter.$or = [
-        { title: { $regex: escapedSearch, $options: "i" } },
-        { description: { $regex: escapedSearch, $options: "i" } },
-        { location: { $regex: escapedSearch, $options: "i" } },
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { location: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -46,7 +38,6 @@ router.get("/", async (req, res) => {
     });
   } catch (error) {
     console.error("FETCH RESOURCES ERROR:", error);
-
     res.status(500).json({
       success: false,
       message: "Unable to fetch resources.",
@@ -55,12 +46,14 @@ router.get("/", async (req, res) => {
 });
 
 // GET /api/resources/mine
-// Authenticated: fetch resources belonging to the current user.
+// Authenticated: Get only the logged-in user's listings
 router.get("/mine", authMiddleware, async (req, res) => {
   try {
     const resources = await Resource.find({
       ownerId: req.user.id,
-    }).sort({ createdAt: -1 });
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({
       success: true,
@@ -68,53 +61,16 @@ router.get("/mine", authMiddleware, async (req, res) => {
       data: resources,
     });
   } catch (error) {
-    console.error("FETCH MY RESOURCES ERROR:", error);
-
+    console.error("FETCH MY LISTINGS ERROR:", error);
     res.status(500).json({
       success: false,
-      message: "Unable to fetch your resources.",
-    });
-  }
-});
-
-// GET /api/resources/:id
-// Public: fetch a single resource.
-router.get("/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid resource ID.",
-      });
-    }
-
-    const resource = await Resource.findById(id).lean();
-
-    if (!resource) {
-      return res.status(404).json({
-        success: false,
-        message: "Resource not found.",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: resource,
-    });
-  } catch (error) {
-    console.error("FETCH RESOURCE ERROR:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Unable to fetch resource.",
+      message: "Unable to fetch your listings.",
     });
   }
 });
 
 // POST /api/resources
-// Authenticated: create a resource owned by the logged-in user.
+// Authenticated: Create a listing owned by the logged-in user
 router.post("/", authMiddleware, async (req, res) => {
   try {
     const {
@@ -126,25 +82,42 @@ router.post("/", authMiddleware, async (req, res) => {
       location,
     } = req.body;
 
-    const ownerName =
-      req.user.name && req.user.name.trim()
-        ? req.user.name.trim()
-        : "ShareSpace User";
+    if (
+      !title?.trim() ||
+      !description?.trim() ||
+      !category?.trim() ||
+      !location?.trim() ||
+      pricePerDay === undefined ||
+      !Number.isFinite(Number(pricePerDay)) ||
+      Number(pricePerDay) < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide valid resource details.",
+      });
+    }
 
     const resource = await Resource.create({
-      title,
-      description,
-      category,
-      pricePerDay,
-      imageUrl,
-      location,
+      title: title.trim(),
+      description: description.trim(),
+      category: category.trim(),
+      pricePerDay: Number(pricePerDay),
+      imageUrl: imageUrl?.trim() || "",
+      location: location.trim(),
+
+      // Never trust ownerId supplied by the frontend.
       ownerId: req.user.id,
-      ownerName,
+
+      // Keep the owner name supplied by your existing frontend
+      // for display only. Ownership is determined by ownerId.
+      ownerName: req.body.ownerName?.trim() || "ShareSpace Member",
+
+      isAvailable: true,
     });
 
     res.status(201).json({
       success: true,
-      message: "Resource created successfully.",
+      message: "Resource listed successfully.",
       data: resource,
     });
   } catch (error) {
@@ -168,7 +141,7 @@ router.post("/", authMiddleware, async (req, res) => {
 });
 
 // PATCH /api/resources/:id
-// Authenticated: update your own resource.
+// Authenticated: Edit only your own listing
 router.patch("/:id", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -180,26 +153,15 @@ router.patch("/:id", authMiddleware, async (req, res) => {
       });
     }
 
-    const resource = await Resource.findById(id);
+    const resource = await Resource.findOne({
+      _id: id,
+      ownerId: req.user.id,
+    });
 
     if (!resource) {
       return res.status(404).json({
         success: false,
-        message: "Resource not found.",
-      });
-    }
-
-    if (!resource.ownerId) {
-      return res.status(403).json({
-        success: false,
-        message: "This resource has no registered owner.",
-      });
-    }
-
-    if (resource.ownerId.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: "You can only update your own resources.",
+        message: "Listing not found or you do not own it.",
       });
     }
 
@@ -210,12 +172,16 @@ router.patch("/:id", authMiddleware, async (req, res) => {
       "pricePerDay",
       "imageUrl",
       "location",
-      "isAvailable",
     ];
 
     for (const field of allowedFields) {
-      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
-        resource[field] = req.body[field];
+      if (req.body[field] !== undefined) {
+        resource[field] =
+          field === "pricePerDay"
+            ? Number(req.body[field])
+            : typeof req.body[field] === "string"
+              ? req.body[field].trim()
+              : req.body[field];
       }
     }
 
@@ -223,13 +189,16 @@ router.patch("/:id", authMiddleware, async (req, res) => {
 
     res.json({
       success: true,
-      message: "Resource updated successfully.",
+      message: "Listing updated successfully.",
       data: resource,
     });
   } catch (error) {
     console.error("UPDATE RESOURCE ERROR:", error);
 
-    if (error.name === "ValidationError" || error.name === "CastError") {
+    if (
+      error.name === "ValidationError" ||
+      error.name === "CastError"
+    ) {
       return res.status(400).json({
         success: false,
         message: error.message,
@@ -238,14 +207,67 @@ router.patch("/:id", authMiddleware, async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Unable to update resource.",
+      message: "Unable to update listing.",
     });
   }
 });
 
+// PATCH /api/resources/:id/availability
+// Authenticated: Change availability of your own listing
+router.patch(
+  "/:id/availability",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { isAvailable } = req.body;
+
+      if (!mongoose.isValidObjectId(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid resource ID.",
+        });
+      }
+
+      if (typeof isAvailable !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "isAvailable must be true or false.",
+        });
+      }
+
+      const resource = await Resource.findOne({
+        _id: id,
+        ownerId: req.user.id,
+      });
+
+      if (!resource) {
+        return res.status(404).json({
+          success: false,
+          message: "Listing not found or you do not own it.",
+        });
+      }
+
+      resource.isAvailable = isAvailable;
+      await resource.save();
+
+      res.json({
+        success: true,
+        message: "Availability updated successfully.",
+        data: resource,
+      });
+    } catch (error) {
+      console.error("UPDATE AVAILABILITY ERROR:", error);
+      res.status(500).json({
+        success: false,
+        message: "Unable to update availability.",
+      });
+    }
+  }
+);
+
 // DELETE /api/resources/:id
-// Authenticated: delete your own resource.
-// Do not delete resources that have active bookings.
+// Authenticated: Delete only your own listing
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -257,22 +279,20 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       });
     }
 
-    const resource = await Resource.findById(id);
+    const resource = await Resource.findOne({
+      _id: id,
+      ownerId: req.user.id,
+    });
 
     if (!resource) {
       return res.status(404).json({
         success: false,
-        message: "Resource not found.",
+        message: "Listing not found or you do not own it.",
       });
     }
 
-    if (!resource.ownerId || resource.ownerId.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: "You can only delete your own resources.",
-      });
-    }
-
+    // Preserve booking history and avoid deleting a resource
+    // that has a pending or approved booking.
     const activeBooking = await Booking.exists({
       resource: resource._id,
       status: { $in: ["pending", "approved"] },
@@ -282,22 +302,21 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       return res.status(409).json({
         success: false,
         message:
-          "This resource has pending or approved bookings. Resolve them before deleting it.",
+          "This listing has a pending or approved booking. Resolve the booking before deleting it.",
       });
     }
 
-    await resource.deleteOne();
+    await Resource.deleteOne({ _id: resource._id });
 
     res.json({
       success: true,
-      message: "Resource deleted successfully.",
+      message: "Listing deleted successfully.",
     });
   } catch (error) {
     console.error("DELETE RESOURCE ERROR:", error);
-
     res.status(500).json({
       success: false,
-      message: "Unable to delete resource.",
+      message: "Unable to delete listing.",
     });
   }
 });
