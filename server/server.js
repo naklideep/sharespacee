@@ -2,6 +2,8 @@
 require("dotenv").config();
 
 const chatRoutes = require("./routes/chat");
+const adminRoutes = require("./routes/admin");
+const reportRoutes = require("./routes/reports");
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
@@ -81,6 +83,8 @@ app.use("/api/bookings", bookingRoutes);
 app.use("/api/resources", resourceRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/reports", reportRoutes);
 
 // Socket.IO JWT authentication
 io.use((socket, next) => {

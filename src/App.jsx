@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "./services/api";
 import Messenger from "./components/Messenger";
+import AdminDashboard from "./components/AdminDashboard";
 import ClassicTheme from "./ClassicTheme";
 import {
   Search,
@@ -166,6 +167,7 @@ function App() {
   const [deletingResourceId, setDeletingResourceId] = useState(null);
 
   // Messenger state
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showMessenger, setShowMessenger] = useState(false);
   const [initialChatBookingId, setInitialChatBookingId] = useState(null);
 
@@ -435,14 +437,16 @@ useEffect(() => {
         authMode === "register"
           ? {
               name: authForm.name.trim(),
-              email: authForm.email.trim(),
-              password: authForm.password,
+             email: authForm.email.trim(),
+    password: authForm.password,
+    role: authForm.role,
               college: authForm.college.trim(),
               role: authForm.role,
             }
           : {
               email: authForm.email.trim(),
               password: authForm.password,
+              role: authForm.role,
             };
 
       const response = await api.post(endpoint, payload);
@@ -868,6 +872,17 @@ return (
                 <MessageCircle size={15} />
                 Messages
               </button>
+              {user.role === "admin" && (
+                <button
+                  type="button"
+                  className="button button-outline"
+                  onClick={() => setShowAdminDashboard(true)}
+                  title="Open Admin Dashboard"
+                >
+                  <ShieldCheck size={15} />
+                  Admin
+                </button>
+              )}
               <button
                 className="button button-outline"
                 onClick={() => openBookingDashboard("mine")}
@@ -1413,20 +1428,41 @@ return (
                 >
                   Login
                 </button>
-                <button
-                  type="button"
-                  className={authMode === "register" ? "auth-tab active" : "auth-tab"}
-                  onClick={() => {
-                    setAuthMode("register");
-                    setAuthError("");
-                    setAuthMessage("");
-                  }}
-                >
-                  Register
-                </button>
+               <button
+  type="button"
+  className={authMode === "register" ? "auth-tab active" : "auth-tab"}
+  onClick={() => {
+    setAuthMode("register");
+    setAuthError("");
+    setAuthMessage("");
+    setAuthForm((prev) => ({
+      ...prev,
+      role: "student",
+    }));
+  }}
+>
+  Register
+</button>
               </div>
 
               <form className="auth-form" onSubmit={handleAuthSubmit}>
+{authMode === "login" && (
+  <label>
+    Login as
+    <select
+      value={authForm.role}
+      onChange={(event) =>
+        setAuthForm({
+          ...authForm,
+          role: event.target.value,
+        })
+      }
+    >
+      <option value="student">Student</option>
+      <option value="admin">Admin</option>
+    </select>
+  </label>
+)}
                 {authMode === "register" && (
                   <>
                     <label>
@@ -1461,8 +1497,8 @@ return (
                           setAuthForm({ ...authForm, role: event.target.value })
                         }
                       >
-                        <option value="student">Student</option>
-                        <option value="faculty">Faculty</option>
+<option value="student">Student</option>
+<option value="admin">Admin</option>
                       </select>
                     </label>
                   </>
@@ -2030,6 +2066,9 @@ return (
             </div>
           </div>
         </div>
+      )}
+      {showAdminDashboard && user?.role === "admin" && (
+        <AdminDashboard onClose={() => setShowAdminDashboard(false)} />
       )}
       {showMessenger && user && (
         <Messenger

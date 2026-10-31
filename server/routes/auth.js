@@ -1,3 +1,4 @@
+
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -49,10 +50,10 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // Public registration cannot create administrator accounts.
-    const safeRole = ["student", "faculty"].includes(role)
-      ? role
-      : "student";
+   // Allow Student and Admin registration.
+const safeRole = ["student", "admin"].includes(role)
+  ? role
+  : "student";
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
@@ -107,7 +108,7 @@ router.post("/register", async (req, res) => {
 // POST /api/auth/login
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
 
     if (
       typeof email !== "string" ||
@@ -121,6 +122,22 @@ router.post("/login", async (req, res) => {
       });
     }
 
+console.log("LOGIN REQUEST:", {
+  email,
+  role,
+  body: req.body,
+});
+
+   const allowedRoles = ["student", "admin"];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a valid account role.",
+      });
+    }
+
+    // Find user first.
     const user = await User.findOne({
       email: email.trim().toLowerCase(),
     }).select("+password");
@@ -129,6 +146,22 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password.",
+      });
+    }
+
+    // Check whether the account is blocked.
+    if (user.isBlocked === true) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been suspended.",
+      });
+    }
+
+    // Verify selected role against MongoDB.
+    if (user.role !== role) {
+      return res.status(403).json({
+        success: false,
+        message: `This account is registered as ${user.role}. Please select the correct role.`,
       });
     }
 
