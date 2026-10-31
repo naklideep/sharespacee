@@ -1,7 +1,6 @@
 
 require("dotenv").config();
 
-
 const chatRoutes = require("./routes/chat");
 const express = require("express");
 const cors = require("cors");
@@ -19,14 +18,42 @@ const notificationRoutes = require("./routes/notification");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Allowed frontend origins
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:5175",
-];
+  process.env.CLIENT_URL,
+].filter(Boolean);
 
 // HTTP server
 const server = http.createServer(app);
+
+// CORS configuration
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests without an origin (e.g. server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.error(`❌ CORS blocked origin: ${origin}`);
+
+    const error = new Error(`CORS blocked origin: ${origin}`);
+    error.status = 403;
+
+    return callback(error);
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+
+// Apply CORS before API routes
+app.use(cors(corsOptions));
+
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
 
 // Socket.IO configuration
 const io = new Server(server, {
@@ -39,26 +66,6 @@ const io = new Server(server, {
 
 // Make Socket.IO accessible inside Express routes
 app.set("io", io);
-
-// Express CORS
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    const error = new Error(`CORS blocked origin: ${origin}`);
-    error.status = 403;
-    return callback(error);
-  },
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-};
-
-app.use(cors(corsOptions));
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -157,10 +164,11 @@ async function startServer() {
       console.log("================================");
       console.log(`API: http://localhost:${PORT}`);
       console.log(`Health: http://localhost:${PORT}/api/health`);
-      console.log(`Socket.IO: Enabled`);
+      console.log("Socket.IO: Enabled");
       console.log(`Resources: http://localhost:${PORT}/api/resources`);
 
       console.log("\nAllowed frontend origins:");
+
       allowedOrigins.forEach((origin) => {
         console.log(`  ✓ ${origin}`);
       });
